@@ -63,9 +63,11 @@ class _SpotHTTP(MexcSDK):
         Returns:
             A hexadecimal string representing the signature of the request.
         """
-        # Generate signature
-        signature = hmac.new(self.api_secret.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
-        return signature
+        return hmac.new(
+            self.api_secret.encode('utf-8'),
+            query_string.encode('utf-8'),
+            hashlib.sha256,
+        ).hexdigest()
 
     def call(self, method: Union[Literal["GET"], Literal["POST"], Literal["PUT"], Literal["DELETE"]], router: str, auth: bool = True, *args, **kwargs) -> dict:
         if not router.startswith("/"):
@@ -83,11 +85,11 @@ class _SpotHTTP(MexcSDK):
         kwargs['params']['timestamp'] = timestamp
         kwargs['params']['recvWindow'] = self.recvWindow
 
-        kwargs['params'] = {k: v for k, v in sorted(kwargs['params'].items())}
+        kwargs['params'] = dict(sorted(kwargs['params'].items()))
         params = urlencode(kwargs.pop('params'), doseq=True).replace('+', '%20')
 
         if self.api_key and self.api_secret and auth:
-            params += "&signature=" + self.sign(params)
+            params += f"&signature={self.sign(params)}"
 
 
         response = self.session.request(method, f"{self.base_url}{router}", params = params, *args, **kwargs)
@@ -97,68 +99,65 @@ class _SpotHTTP(MexcSDK):
 
         return response.json()
     
-class _FuturesHTTP(MexcSDK):
-    def __init__(self, api_key: str = None, api_secret: str = None, proxies: dict = None):
-        super().__init__(api_key, api_secret, "https://contract.mexc.com", proxies = proxies)
+class _FuturesHTTP:
+    def __init__(self, api_key: str, api_secret: str, proxies: dict = None):
+        self.api_key = api_key
+        self.api_secret = api_secret
+        self.base_url = "https://contract.mexc.com"
+        self.recvWindow = 5000  # 5 seconds allowed for timestamp drift
 
+        self.session = requests.Session()
         self.session.headers.update({
             "Content-Type": "application/json",
-            "ApiKey": self.api_key
+            "ApiKey": self.api_key  # Correctly set the API Key header
         })
 
-    def sign(self, timestamp: str, **kwargs) -> str:
-        """
-        Generates a signature for an API request using HMAC SHA256 encryption.
+        if proxies:
+            self.session.proxies.update(proxies)
 
-        :param timestamp: A string representing the timestamp of the request.
-        :type timestamp: str
-        :param kwargs: Arbitrary keyword arguments representing request parameters.
-        :type kwargs: dict
+    def sign(self, timestamp: str, params: dict) -> str:
+        """
+        Generate HMAC SHA256 signature.
+        The signature string includes API key, timestamp, and sorted query string.
+        """
+        query_string = "&".join([f"{k}={v}" for k, v in sorted(params.items())])
+        message = f"{self.api_key}{timestamp}{query_string}"
+        return hmac.new(
+            self.api_secret.encode('utf-8'),
+            message.encode('utf-8'),
+            hashlib.sha256,
+        ).hexdigest()
 
-        :return: A hexadecimal string representing the signature of the request.
-        :rtype: str
+    def call(self, method: Union[Literal["GET"], Literal["POST"]], router: str, **kwargs) -> dict:
         """
-        # Generate signature
-        query_string = "&".join([f"{k}={v}" for k, v in sorted(kwargs.items())])
-        query_string = self.api_key + timestamp + query_string
-        signature = hmac.new(self.api_secret.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest()
-        return signature
-    
-    def call(self, method: Union[Literal["GET"], Literal["POST"], Literal["PUT"], Literal["DELETE"]], router: str, *args, **kwargs) -> dict:
+        Make an authenticated API request to MEXC Futures.
         """
-        Makes a request to the specified HTTP method and router using the provided arguments.
-        
-        :param method: A string that represents the HTTP method(GET, POST, PUT, or DELETE) to be used.
-        :type method: str
-        :param router: A string that represents the API endpoint to be called.
-        :type router: str
-        :param *args: Variable length argument list.
-        :type *args: list
-        :param **kwargs: Arbitrary keyword arguments.
-        :type **kwargs: dict
-        
-        :return: A dictionary containing the JSON response of the request.
-        """
-        
         if not router.startswith("/"):
             router = f"/{router}"
-        
-        # clear None values
-        kwargs = {k: v for k, v in kwargs.items() if v is not None}
 
-        for variant in ('params', 'json'):
-            if kwargs.get(variant):
-                kwargs[variant] = {k: v for k, v in kwargs[variant].items() if v is not None}
-            
-                if self.api_key and self.api_secret:
-                    # add signature
-                    timestamp = str(int(time.time() * 1000))
+        params = kwargs.get("params", {})
+        params["timestamp"] = str(int(time.time() * 1000))  # Add timestamp
+        params["recvWindow"] = self.recvWindow  # Add recvWindow
 
-                    kwargs['headers'] = {
-                        "Request-Time": timestamp,
-                        "Signature": self.sign(timestamp, **kwargs[variant])
-                    }
+        # Sort and encode query string
+        encoded_params = urlencode(params, doseq=True)
 
-        response = self.session.request(method, f"{self.base_url}{router}", *args, **kwargs)
+        # Generate signature
+        signature = self.sign(params["timestamp"], params)
+
+        # Add signature to headers
+        headers = {
+            "Request-Time": params["timestamp"],
+            "Signature": signature,
+        }
+        headers |= self.session.headers
+
+        # Make the request
+        url = f"{self.base_url}{router}"
+        response = self.session.request(method, url, headers=headers, params=encoded_params)
+
+        # Handle potential errors
+        if not response.ok:
+            raise MexcAPIError(f"(code={response.status_code}): {response.text}")
 
         return response.json()
