@@ -340,10 +340,7 @@ class HTTP(_FuturesHTTP):
         :return: response dictionary
         :rtype: dict
         """
-        return self.call("GET", "api/v1/contracts",
-                            params = dict(
-                                    symbol = symbol
-                            ))
+        return self.call("GET", f"api/v1/contracts/{symbol}")
 
     def risk_reverse(self) -> dict: 
         """
