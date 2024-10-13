@@ -47,7 +47,7 @@ class MexcSDK(ABC):
 
 class _SpotHTTP(MexcSDK):
     def __init__(self, api_key: str = None, api_secret: str = None, proxies: dict = None):
-        super().__init__(api_key, api_secret, "https://api.mexc.com", proxies = proxies)
+        super().__init__(api_key, api_secret, "https://contract.mexc.com", proxies = proxies)
 
         self.session.headers.update({
             "X-MEXC-APIKEY": self.api_key
