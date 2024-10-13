@@ -325,7 +325,26 @@ class HTTP(_FuturesHTTP):
                             params = dict(
                                     symbol = symbol
                             ))
-    
+
+    def ticker_detail(self, symbol: Optional[str] = None) -> dict: 
+        """
+        ### Get contract trend data
+
+        Rate limit: 20 times / 2 seconds
+
+        https://mexcdevelop.github.io/apidocs/contract_v1_en/#get-contract-trend-data
+
+        :param symbol: (optional)the name of the contract
+        :type symbol: str
+
+        :return: response dictionary
+        :rtype: dict
+        """
+        return self.call("GET", "api/v1/contracts",
+                            params = dict(
+                                    symbol = symbol
+                            ))
+
     def risk_reverse(self) -> dict: 
         """
         ### Get all contract risk fund balance
