@@ -512,10 +512,14 @@ class HTTP(_FuturesHTTP):
         :return: response dictionary
         :rtype: dict
         """
-        return self.call("GET", "api/v1/private/position/open_positions", 
+        
+        if symbol is not None:
+            return self.call("GET", "api/v1/private/position/open_positions", 
                             params = dict(
                                     symbol = symbol
                             ))
+        else:
+            return self.call("GET", "api/v1/private/position/open_positions")
     
     def funding_records(self, 
                         symbol:      Optional[str] = None, 
